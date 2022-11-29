@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="pyr.mycompany.mapper.RawMapper">	
+	<!-- 원자재 등록 -->
+	<insert id="rawInsert">
+		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+	    SELECT IFNULL(MAX(bno),0)+1 FROM raw
+		</selectKey>
+		INSERT INTO raw(raw_id, raw_name, raw_standard, raw_price, bno)
+		VALUES(CONCAT("R", RIGHT(CONCAT('000000', #{bno}), 5)), #{raw_name}, #{raw_standard}, #{raw_price}, #{bno});
+	</insert>
+	
+	<!-- 원자재 목록 조회 -->
+   	<select id="rawSelect" resultType="pyr.mycompany.domain.RawDTO">
+		SELECT *
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, r.*
+				FROM (SELECT * FROM raw) AS r
+				WHERE 1=1
+				<if test="raw_id!=null">
+				AND raw_id LIKE CONCAT('%', #{raw_id}, '%')
+				</if>
+				<if test="raw_name!=null">
+				AND raw_name LIKE CONCAT('%', #{raw_name}, '%')
+				</if>
+		)AS rlist
+		<![CDATA[	
+		WHERE rownum>(#{pageNum}-1)*#{amount}
+		AND rownum<=#{pageNum}*#{amount};
+		]]>
+	</select>
+		
+	<!-- 원자재 총 건수 -->
+	<select id="rawTotalCount" resultType="int">
+		SELECT COUNT(*)
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, r.*
+				FROM (SELECT * FROM raw) AS r
+				WHERE 1=1
+				<if test="raw_id!=null">
+				AND raw_id LIKE CONCAT('%', #{raw_id}, '%')
+				</if>
+				<if test="raw_name!=null">
+				AND raw_name LIKE CONCAT('%', #{raw_name}, '%')
+				</if>
+		)AS rlist
+	</select>
+	
+	<!-- 원자재 상세 내용 조회 -->
+	<select id="rawDetail" resultType="pyr.mycompany.domain.RawDTO">
+		SELECT * FROM raw WHERE raw_id=#{raw_id}
+	</select>
+	
+	<!-- 원자재 수정 -->
+	<update id="rawModify">
+		UPDATE raw SET raw_name=#{raw_name}, raw_standard=#{raw_standard}, raw_price=#{raw_price}
+		WHERE raw_id=#{raw_id}
+	</update>
+	
+	<!-- 원자재 삭제 -->
+	<delete id="rawDelete">
+		DELETE FROM raw WHERE raw_id=#{raw_id}
+	</delete>
+</mapper>

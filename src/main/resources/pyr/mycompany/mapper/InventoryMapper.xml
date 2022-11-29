@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="pyr.mycompany.mapper.InventoryMapper">	 	
+	<!-- 재고 목록 조회 -->
+	<select id="invSelect" resultType="pyr.mycompany.domain.InventoryDTO">
+		SELECT *
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, inv.*
+				FROM (SELECT il.*, r.raw_name FROM inventory_list il
+					JOIN raw r ON il.raw_id = r.raw_id) AS inv
+				WHERE 1=1 AND inventory_quantity >0
+				<if test="inventory_id!=null">
+				AND inventory_id LIKE CONCAT('%', #{inventory_id}, '%')
+				</if>
+				<if test="raw_id!=null">
+				AND raw_id LIKE CONCAT('%', #{raw_id}, '%')
+				</if>
+				<if test="raw_name!=null">
+				AND raw_name LIKE CONCAT('%', #{raw_name}, '%')
+				</if>
+				<if test="storage_name!=null">
+				AND storage_name LIKE CONCAT('%', #{storage_name}, '%')
+				</if>
+				<if test="storageArea_name!=null">
+				AND storageArea_name LIKE CONCAT('%', #{storageArea_name}, '%')
+				</if>
+		)AS ilist
+		<![CDATA[	
+		WHERE rownum>(#{pageNum}-1)*#{amount}
+		AND rownum<=#{pageNum}*#{amount};
+		]]>
+	</select>
+	
+	<!-- 재고 총 건수 -->
+	<select id="invTotalCount" resultType="java.lang.Integer">
+		SELECT COUNT(*)
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, inv.*
+				FROM (SELECT il.*, r.raw_name FROM inventory_list il
+					JOIN raw r ON il.raw_id = r.raw_id) AS inv
+				WHERE 1=1 AND inventory_quantity>0
+				<if test="inventory_id!=null">
+				AND inventory_id LIKE CONCAT('%', #{inventory_id}, '%')
+				</if>
+				<if test="raw_id!=null">
+				AND raw_id LIKE CONCAT('%', #{raw_id}, '%')
+				</if>
+				<if test="raw_name!=null">
+				AND raw_name LIKE CONCAT('%', #{raw_name}, '%')
+				</if>
+				<if test="storage_name!=null">
+				AND storage_name LIKE CONCAT('%', #{storage_name}, '%')
+				</if>
+				<if test="storageArea_name!=null">
+				AND storageArea_name LIKE CONCAT('%', #{storageArea_name}, '%')
+				</if>
+		)AS ilist
+	</select>
+	
+	<!-- 재고 상세 조회 -->
+	<select id="invDetailSelect" resultType="pyr.mycompany.domain.InventoryDTO">
+		SELECT *
+		FROM (SELECT @rownum:=@rownum+1 AS rownum, inv.*
+				FROM (SELECT @rownum:=0) AS tmp,
+					(SELECT il.*, r.raw_name FROM inventory_list il
+					JOIN raw r ON il.raw_id = r.raw_id) AS inv
+				WHERE inventory_id=#{inventory_id}
+		)AS inv_list
+	</select>
+	
+	<!-- 창고 이름 조회 -->
+	<select id="storageNameGet" resultType="pyr.mycompany.domain.StorageDTO">
+		SELECT DISTINCT storage_name FROM storage
+	</select>
+	
+	<!-- 창고 구역 조회 -->
+	<select id="storageAreaNameGet" resultType="pyr.mycompany.domain.StorageDTO">
+		SELECT * FROM storage WHERE storage_name = #{storage_name}
+	</select>
+
+	<!-- 이동 사유 조회 -->
+	<select id="invMoveMsg" resultType="pyr.mycompany.domain.InventoryMoveMessageDTO">
+		SELECT * FROM inventory_move_message
+	</select>
+
+	<!-- 재고 이동 시, 품번 & 창고 중복 확인 -->
+	<select id="moveCheck" resultType="int">
+		SELECT count(*) FROM inventory_list WHERE raw_id=#{raw_id} AND storage_name=#{storage_name} AND storageArea_name=#{storageArea_name}
+	</select>
+	
+	<!-- 중복 재고 번호 가져오기 -->
+	<select id="moveOverlapIdSelect" resultType="String">
+		SELECT inventory_id FROM inventory_list WHERE raw_id=#{raw_id} AND storage_name=#{storage_name} AND storageArea_name=#{storageArea_name}
+	</select>
+	
+	<!-- 재고 이동 시, 공통 업데이트 -->
+	<update id="moveCommonUpdate">
+		UPDATE inventory_list SET inventory_quantity=(inventory_quantity-#{inventory_quantity}), real_quantity=(real_quantity-#{inventory_quantity}) WHERE inventory_id=#{inventory_id}
+	</update>
+	
+	<!-- 재고 이동 시, 총 재고 이동하면 delete -->
+	<delete id="moveDelete">
+		DELETE FROM inventory_list WHERE inventory_quantity = 0 AND real_quantity = 0;
+	</delete>
+
+	<!-- 재고 이동 시, 중복 없다면 insert -->
+	<insert id="moveInsert">
+		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+		    SELECT MAX(bno) + 1 FROM inventory_list
+		</selectKey>
+		INSERT INTO inventory_list(inventory_id,
+		                     inventory_quantity,
+		                     real_quantity,
+		                     raw_id,
+		                     storage_name,
+		                     storageArea_name,
+		                     bno)
+		VALUES((CONCAT("I",RIGHT(CONCAT("000000",#{bno}),5))),
+			  #{inventory_quantity},
+			  #{inventory_quantity},
+		      #{raw_id},
+		      #{storage_name},
+		      #{storageArea_name},
+		      #{bno})
+   </insert>
+	
+	<!-- 재고 이동 시, 중복 있다면 update -->
+	<update id="moveUpdate">
+		UPDATE inventory_list SET inventory_quantity=(inventory_quantity+#{inventory_quantity}), real_quantity=(real_quantity+#{inventory_quantity}) WHERE raw_id=#{raw_id} AND storage_name=#{storage_name} AND storageArea_name=#{storageArea_name};
+	</update>
+	
+	<!-- 재고 조정 update -->
+	<update id="adjustUpdate">
+		UPDATE inventory_list SET inventory_quantity=#{inventory_quantity}, real_quantity=#{real_quantity} WHERE inventory_id=#{inventory_id};
+	</update>
+	
+	
+
+	
+	
+	<!-- 재고 이력 관련 -->
+	<!-- 재고 이력 db에 기록 insert -->
+	<insert id="moveRecInsert">
+		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+		    SELECT IFNULL(MAX(bno), 0)+1 FROM inventory_history
+		</selectKey>
+		INSERT INTO inventory_history(history_id, history_category, history_detail, raw_id, diff_quantity, d_inventory_id, history_admin, msg_bno, bno)
+		VALUES(CONCAT("H",RIGHT(CONCAT("000000",#{bno}),5)), #{history_category}, #{history_detail}, #{raw_id}, #{diff_quantity}, #{d_inventory_id}, #{history_admin}, #{msg_bno}, #{bno})
+	</insert>
+
+	<insert id="adjustRecInsert">
+		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+		    SELECT IFNULL(MAX(bno), 0)+1 FROM inventory_history
+		</selectKey>
+		INSERT INTO inventory_history(history_id, history_category, history_detail, raw_id, diff_quantity, d_inventory_id, history_admin, bno)
+		VALUES(CONCAT("H",RIGHT(CONCAT("000000",#{bno}),5)), #{history_category}, #{history_detail}, #{raw_id}, #{diff_quantity}, #{d_inventory_id}, #{history_admin}, #{bno})
+	</insert>
+	
+	<!-- 재고 이동 시 새로 insert되는 재고id 업데이트 -->
+	<update id="moveRecNewIdUpdate">
+		UPDATE inventory_history SET r_inventory_id =
+			(SELECT inventory_id FROM inventory_list WHERE bno = (SELECT MAX(bno) FROM inventory_list))
+		WHERE bno = (SELECT MAX(bno) FROM inventory_history)
+	</update>
+	
+	<!-- 재고 이동 시 중복되는 재고id 업데이트 -->
+	<update id="moveRecDupIdUpdate">
+		UPDATE inventory_history SET r_inventory_id =
+			(SELECT inventory_id FROM inventory_list
+				WHERE raw_id = #{raw_id}
+				AND storage_name = #{storage_name}
+				AND storageArea_name = #{storageArea_name})
+		WHERE d_inventory_id = #{d_inventory_id} AND bno = (SELECT MAX(bno) FROM inventory_history)
+	</update>
+	
+	<!-- 재고 이력 조회 -->
+	<select id="invHistorySelect" resultType="pyr.mycompany.domain.InventoryHistoryDTO">
+		SELECT *
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, inv.*
+				FROM (SELECT ih.*, r.raw_name, a.name FROM inventory_history ih
+					JOIN raw r ON ih.raw_id = r.raw_id
+					LEFT JOIN administrator a ON ih.history_admin = a.id) AS inv
+				WHERE 1=1
+				<if test="history_category!=null">
+				AND history_category LIKE CONCAT('%', #{history_category}, '%')
+				</if>
+				<if test="history_detail!=null">
+				AND history_detail LIKE CONCAT('%', #{history_detail}, '%')
+				</if>
+				<if test="raw_id!=null">
+				AND raw_id LIKE CONCAT('%', #{raw_id}, '%')
+				</if>
+				<if test="raw_name!=null">
+				AND raw_name LIKE CONCAT('%', #{raw_name}, '%')
+				</if>
+				<if test="history_detail!=null">
+				AND history_detail LIKE CONCAT('%', #{history_detail}, '%')
+				</if>
+				<if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND history_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		)AS ihlist
+		<![CDATA[	
+		WHERE rownum>(#{pageNum}-1)*#{amount}
+		AND rownum<=#{pageNum}*#{amount};
+		]]>
+	</select>
+	
+	<!-- 재고 이력 조회 건 수 -->
+	<select id="invHistoryTotalCount" resultType="int">
+		SELECT COUNT(*)
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, inv.*
+				FROM (SELECT ih.*, r.raw_name, a.name FROM inventory_history ih
+					JOIN raw r ON ih.raw_id = r.raw_id
+					LEFT JOIN administrator a ON ih.history_admin = a.id) AS inv
+				WHERE 1=1
+				<if test="history_category!=null">
+				AND history_category LIKE CONCAT('%', #{history_category}, '%')
+				</if>
+				<if test="history_detail!=null">
+				AND history_detail LIKE CONCAT('%', #{history_detail}, '%')
+				</if>
+				<if test="raw_id!=null">
+				AND raw_id LIKE CONCAT('%', #{raw_id}, '%')
+				</if>
+				<if test="raw_name!=null">
+				AND raw_name LIKE CONCAT('%', #{raw_name}, '%')
+				</if>
+				<if test="history_detail!=null">
+				AND history_detail LIKE CONCAT('%', #{history_detail}, '%')
+				</if>
+				<if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND history_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		)AS ihlist
+	</select>
+
+</mapper>

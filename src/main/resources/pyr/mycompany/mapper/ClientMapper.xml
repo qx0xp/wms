@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="pyr.mycompany.mapper.ClientMapper">
+	<!-- 팝업 창 거래처 검색 -->
+	<select id="clientPopSelect" resultType="pyr.mycompany.domain.ClientDTO">
+		SELECT *
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno) AS rownum, c.*
+			FROM (SELECT * FROM `client`) AS c
+			WHERE 1=1
+			<if test="client_id!=null">
+			AND client_id LIKE CONCAT('%', #{client_id}, '%')
+			</if>
+			<if test="client_name!=null">
+			AND client_name LIKE CONCAT('%', #{client_name}, '%')
+			</if>
+		) AS cl
+		<![CDATA[
+		WHERE rownum>(#{pageNum}-1)*#{amount} AND rownum<=#{pageNum}*#{amount}
+		]]>
+	</select>
+	
+	<!-- 팝업창 거래처 건 수 조회 -->
+	<select id="clientPopTotalCount" resultType="int">
+		SELECT COUNT(*) FROM `client`
+		WHERE 1=1
+		<if test="client_id!=null">
+		AND client_id LIKE CONCAT('%', #{client_id}, '%')
+		</if>
+		<if test="client_name!=null">
+		AND client_name LIKE CONCAT('%', #{client_name}, '%')
+		</if>
+	</select>
+
+	<!-- 거래처 등록 -->
+	<insert id="clientInsert">
+		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+		    SELECT IFNULL(MAX(bno), 0)+1 FROM client
+		</selectKey>
+			INSERT INTO client(client_id, client_name, client_manager, client_tel, bno)
+			VALUES((CONCAT("C",RIGHT(CONCAT("000000",#{bno}),5))), #{client_name}, #{client_manager}, #{client_tel}, #{bno})
+   </insert>
+   
+   <!-- 거래처 정보 조회 -->
+   <select id="clientSelect" resultType="pyr.mycompany.domain.ClientDTO">
+		SELECT *
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, c.*
+				FROM (SELECT * FROM client) AS c
+				WHERE 1=1
+				<if test="client_name!=null">
+				AND client_name LIKE CONCAT('%', #{client_name}, '%')
+				</if>
+				<if test="client_manager!=null">
+				AND client_manager LIKE CONCAT('%', #{client_manager}, '%')
+				</if>
+		)AS clist
+		<![CDATA[	
+		WHERE rownum>(#{pageNum}-1)*#{amount}
+		AND rownum<=#{pageNum}*#{amount};
+		]]>
+	</select>
+		
+	<!-- 거래처 총 건수 -->
+	<select id="clientTotalCount" resultType="int">
+		SELECT COUNT(*)
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, c.*
+				FROM (SELECT * FROM client) AS c
+				WHERE 1=1
+				<if test="client_name!=null">
+				AND client_name LIKE CONCAT('%', #{client_name}, '%')
+				</if>
+				<if test="client_manager!=null">
+				AND client_manager LIKE CONCAT('%', #{client_manager}, '%')
+				</if>
+		)AS clist
+	</select>
+	
+	<!-- 거래처 내용 조회 -->
+	<select id="clientDetail" resultType="pyr.mycompany.domain.ClientDTO">
+		SELECT * FROM client WHERE client_id=#{client_id}
+	</select>
+	
+	<!-- 거래처 수정 -->
+	<update id="clientModify">
+		UPDATE client SET client_name=#{client_name}, client_tel=#{client_tel}, client_manager=#{client_manager}
+		WHERE client_id=#{client_id}
+	</update>
+	
+	<!-- 거래처 삭제 -->
+	<delete id="clientDelete">
+		DELETE FROM client WHERE client_id=#{client_id}
+	</delete>
+</mapper>

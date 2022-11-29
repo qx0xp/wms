@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="pyr.mycompany.mapper.StatusReportMapper">
+	
+	<!-- 품목별 입고그래프, 거래처별 입고그래프 그리기 -->
+	<select id="receiving_report" resultType="pyr.mycompany.domain.ReceivingReportDTO">
+		SELECT v.raw_id, 
+			r.raw_name, 
+			c.client_name,
+			SUM(v.receiving_quantity) AS total_receiving_quantity	
+		FROM receiving_list AS v
+			INNER JOIN raw AS r
+			ON v.raw_id = r.raw_id
+			INNER JOIN `client` AS c
+			ON v.client_id = c.client_id
+
+		<choose>
+	  	<when test="receiving_category == null">
+	      where 1=1
+	    </when>
+	    <when test="receiving_category == 'A'.toString()">
+	      <if test="start_date !=null and end_date != null">
+		    <choose>
+		    	<when test="start_date == '' or end_date == ''">
+		    	 where 1=1
+		    	</when>
+		    	<otherwise>
+		    	AND receiving_date BETWEEN #{start_date} AND #{end_date}
+		    	</otherwise>
+		    </choose>
+	      </if>
+	      GROUP BY raw_id
+	    </when>
+	    <when test="receiving_category == 'B'.toString()">
+	      <if test="start_date !=null and end_date != null">
+		    <choose>
+		    	<when test="start_date == '' or end_date == ''">
+		    	 where 1=1
+		    	</when>
+		    	<otherwise>
+		    	AND receiving_date BETWEEN #{start_date} AND #{end_date}
+		    	</otherwise>
+		    </choose>
+	      </if>
+	      GROUP BY c.client_id
+	    </when>
+	  </choose> 
+		ORDER BY receiving_quantity DESC LIMIT 10; 
+	</select>
+	
+	<!-- 품목별 출고그래프, 출하지별 출고그래프 그리기 -->
+	<select id="delivery_report" resultType="pyr.mycompany.domain.DeliveryReportDTO">
+		SELECT d.raw_id, 
+			r.raw_name, 
+			s.shipment_name,
+			SUM(d.delivery_quantity) AS total_delivery_quantity	
+		FROM delivery_list AS d
+			INNER JOIN raw AS r
+			ON d.raw_id = r.raw_id
+			INNER JOIN shipment AS s
+			ON d.shipment_bno = s.shipment_bno
+
+		<choose>
+	  	<when test="delivery_category == null">
+	      where 1=1
+	    </when>
+	    <when test="delivery_category == 'A'.toString()">
+	      <if test="start_date !=null and end_date != null">
+		    <choose>
+		    	<when test="start_date == '' or end_date == ''">
+		    	 where 1=1
+		    	</when>
+		    	<otherwise>
+		    	AND delivery_date BETWEEN #{start_date} AND #{end_date}
+		    	</otherwise>
+		    </choose>
+	      </if>
+	      GROUP BY raw_id
+	      ORDER BY delivery_quantity DESC LIMIT 10; 
+	    </when>
+	    <when test="delivery_category == 'B'.toString()">
+	      <if test="start_date !=null and end_date != null">
+		    <choose>
+		    	<when test="start_date == '' or end_date == ''">
+		    	 where 1=1
+		    	</when>
+		    	<otherwise>
+		    	AND delivery_date BETWEEN #{start_date} AND #{end_date}
+		    	</otherwise>
+		    </choose>
+	      </if>
+	      GROUP BY s.shipment_name
+	    </when>
+	  </choose> 
+	</select>
+	
+	<!-- 월별 입고 확정 건 수 조회 -->
+	<select id="recByMonth" resultType="map">
+		<!-- SELECT CONCAT(YEAR(receiving_date), "-", MONTH(receiving_date)) month, COUNT(*) count
+		FROM receiving_list
+	    <if test="start_date !=null and end_date != null">
+		    <choose>
+		    	<when test="start_date == '' or end_date == ''">
+		    	WHERE receiving_date BETWEEN CONCAT(YEAR(SYSDATE()),'-01-01') AND CONCAT(YEAR(SYSDATE()),'-12-31')
+		    	</when>
+		    	<otherwise>
+		    	WHERE receiving_date BETWEEN CONCAT(#{start_date}, '-01') AND CONCAT(#{end_date}, '-31')
+		    	</otherwise>
+		    </choose>
+	    </if>
+		GROUP BY YEAR(receiving_date), MONTH(receiving_date);-->
+		
+		SELECT * FROM (
+			SELECT
+				date_format(aa.temp_date, '%Y-%m') month,
+				COUNT(receiving_date) count
+			FROM
+				temp_date aa
+			LEFT JOIN
+		      receiving_list c ON (c.receiving_date = aa.temp_date)
+		    	GROUP BY month
+		) a
+		WHERE month BETWEEN #{start_date} AND #{end_date}
+	</select>
+	
+	<!-- 월별 출고 확정 건 수 조회 -->
+	<select id="delByMonth" resultType="map">
+		<!-- SELECT CONCAT(YEAR(delivery_date), "-", MONTH(delivery_date)) month, COUNT(*) count
+		FROM delivery_list
+	    <if test="start_date !=null and end_date != null">
+		    <choose>
+		    	<when test="start_date == '' or end_date == ''">
+		    	WHERE delivery_date BETWEEN CONCAT(YEAR(SYSDATE()),'-01-01') AND CONCAT(YEAR(SYSDATE()),'-12-31')
+		    	</when>
+		    	<otherwise>
+		    	WHERE delivery_date BETWEEN CONCAT(#{start_date}, '-01') AND CONCAT(#{end_date}, '-31')
+		    	</otherwise>
+		    </choose>
+	    </if>
+		GROUP BY YEAR(delivery_date), MONTH(delivery_date);
+		 -->
+		SELECT * FROM (
+			SELECT
+				date_format(aa.temp_date, '%Y-%m') month,
+				COUNT(delivery_date) count
+			FROM
+				temp_date aa
+			LEFT JOIN
+		      delivery_list c ON (c.delivery_date = aa.temp_date)
+		    	GROUP BY month
+		) a
+		WHERE month BETWEEN #{start_date} AND #{end_date}
+	</select>
+	
+</mapper>

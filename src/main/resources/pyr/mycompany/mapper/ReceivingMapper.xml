@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="pyr.mycompany.mapper.ReceivingMapper">
+	<!-- 입고 예정 등록  -->
+  	<insert id="regist">
+	    <selectKey keyProperty="bno" resultType="int" order="BEFORE">
+	        SELECT IFNULL(MAX(bno),0) + 1 FROM receiving_expect
+	    </selectKey>
+		INSERT INTO receiving_expect(expect_id,
+									expect_date,
+									raw_id,
+									client_id,
+									expect_quantity,
+									storage_name,
+									storageArea_name,
+									bno)
+		VALUES((CONCAT ("E",RIGHT(CONCAT("000000",#{bno}),5))),
+				#{expect_date},
+				#{raw_id},
+				#{client_id},
+				#{expect_quantity},
+				#{storage_name},
+				#{storageArea_name},
+				#{bno})
+	</insert>
+	
+	<!-- 창고 이름 조회 -->
+	<select id="storageNameGet" resultType="pyr.mycompany.domain.StorageDTO">
+		SELECT DISTINCT storage_name FROM storage
+	</select>
+	
+	<!-- 창고 구역 조회 -->
+	<select id="storageAreaNameGet" resultType="pyr.mycompany.domain.StorageDTO">
+		SELECT * FROM storage WHERE storage_name = #{storage_name}
+	</select>
+  	
+	<!-- 입고 예정 목록 조회 -->
+    <select id="expect_list" resultType="pyr.mycompany.domain.ReceivingExpectDTO">
+		SELECT *
+		FROM(SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, rc.* 
+				FROM (SELECT r.raw_name, v.*, c.client_name FROM receiving_expect AS v
+					INNER JOIN raw AS r
+					ON v.raw_id = r.raw_id
+					INNER JOIN `client` AS c
+					ON v.client_id = c.client_id) AS rc				
+				WHERE expect_state = 0
+			    <if test="expect_id != null">
+			    AND expect_id LIKE CONCAT('%',#{expect_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="client_name != null">
+			    AND client_name LIKE CONCAT('%',#{client_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND expect_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS receiving_expect      
+	  <![CDATA[
+	  	 WHERE rownum>(#{pageNum}-1)*#{amount} 
+	  	 AND rownum<=#{pageNum}*#{amount}
+	  ]]>
+	</select>
+	
+	<!--입고 예정 목록 총 수 -->
+  	<!--int 타입, 하나의 값이기 때문에 int 적으면 컨트롤러로 감  -->
+  	<select id="expectTotalCount" resultType="int">
+		SELECT COUNT(*)
+		FROM(SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, rc.* 
+				FROM (SELECT r.raw_name, v.*, c.client_name FROM receiving_expect AS v
+					INNER JOIN raw AS r
+					ON v.raw_id = r.raw_id
+					INNER JOIN `client` AS c
+					ON v.client_id = c.client_id) AS rc				
+				WHERE expect_state = 0
+			    <if test="expect_id != null">
+			    AND expect_id LIKE CONCAT('%',#{expect_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="client_name != null">
+			    AND client_name LIKE CONCAT('%',#{client_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND expect_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS receiving_expect     
+
+  	</select>	
+  	
+  	<!-- 입고 예정 상세 정보 조회 -->
+  	<select id="expect_modify" resultType="pyr.mycompany.domain.ReceivingExpectDTO">
+  		SELECT r.raw_name, v.*, c.client_name
+  		FROM receiving_expect AS v
+		INNER JOIN raw AS r ON v.raw_id = r.raw_id
+		INNER JOIN `client` AS c ON v.client_id = c.client_id 
+  		WHERE expect_id=#{expect_id}     
+  	</select>
+  	
+  	<!-- 입고 예정 수정 -->
+  	<update id="expect_update">
+  		UPDATE receiving_expect
+  		SET expect_date=#{expect_date},
+  			expect_quantity=#{expect_quantity},
+  			storage_name=#{storage_name},
+  			storageArea_name=#{storageArea_name}
+  		WHERE expect_id=#{expect_id}
+  	</update>
+  	
+  	<!-- 입고 지시 할 때, 입고 상태 1 처리 -->
+  	<update id="expect_instruct">
+  		UPDATE receiving_expect
+  		SET expect_state=1
+  		WHERE expect_id=#{expect_id} 
+  	</update>
+  	
+  	<!-- 입고 예정 삭제 -->
+  	<delete id="expect_delete">
+  		DELETE FROM receiving_expect WHERE expect_id=#{expect_id}
+  	</delete>
+  	
+
+	<!-- 품목 목록 리스트 뿌리고 검색 기능 넣기 -->
+	<select id="item_list" resultType="pyr.mycompany.domain.ItemDTO">
+		SELECT * 
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno) AS rownum, r.* 
+				FROM (SELECT * FROM raw) as r 	
+				WHERE 1=1
+				<if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="keyword != null">
+			    AND raw_name LIKE CONCAT('%',#{keyword},'%')
+			    </if> 
+		) AS itemList            
+	   <!--CDATA : <(꺽세)가 크고 작음을 의미 -->
+	  <![CDATA[
+	  	 WHERE rownum>(#{pageNum}-1)*#{amount} 
+	  	 AND rownum<=#{pageNum}*#{amount}
+	  ]]>
+	</select>
+	
+	<!--품목 검색 페이징에 쓰일 전체 건 수  -->
+  	<!--int 타입이고 하나의 값이기 때문에 int만 적으면 컨트롤러로 간다  -->
+  	<select id="getTotalCount" resultType="int">
+  		SELECT COUNT(*) 
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno) AS rownum, r.* 
+				FROM (SELECT * FROM raw) as r
+	  	<!--검색 했을 때 total만 가지고 오면 하나의 데이터가 나와도 모든 페이지가 다 뜨기 때문에  ok
+	  	where절로 검색했을 때 조건 추가하기-->
+	  			WHERE 1=1
+	  			<if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="keyword != null">
+			    AND raw_name like CONCAT('%',#{keyword},'%')
+			    </if>
+	    ) AS itemList    
+  	</select>
+  	
+	<!-- 입고 목록 리스트 뿌리고 검색 기능 넣기 -->
+    <select id="status_list" resultType="pyr.mycompany.domain.ReceivingExpectDTO">
+		SELECT *
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, rc.* 
+				FROM (SELECT r.raw_name, v.*, c.client_name FROM receiving_expect AS v
+					INNER JOIN raw AS r
+					ON v.raw_id = r.raw_id
+					INNER JOIN `client` AS c
+					ON v.client_id = c.client_id) AS rc
+				WHERE expect_state = 1
+			    <if test="expect_id != null">
+			    AND expect_id LIKE CONCAT('%',#{expect_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="client_name != null">
+			    AND client_name LIKE CONCAT('%',#{client_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND expect_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS receivingList      
+	  <![CDATA[
+	  	 WHERE rownum>(#{pageNum}-1)*#{amount} 
+	  	 AND rownum<=#{pageNum}*#{amount}
+	  ]]>
+	</select>
+	
+	<!--품목검색 페이징에 쓰일 전체건수  -->
+  	<!--int타입이고 하나의 값이기때문에 int만적으면 컨트롤러로간다  -->
+  	<select id="receivingTotalCount" resultType="int">
+  		SELECT COUNT(*)
+  		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, rc.* 
+				FROM (SELECT r.raw_name, v.*, c.client_name FROM receiving_expect AS v
+					INNER JOIN raw AS r
+					ON v.raw_id = r.raw_id
+					INNER JOIN `client` AS c
+					ON v.client_id = c.client_id) AS rc
+	  			WHERE expect_state = 1
+			    <if test="expect_id != null">
+			    AND expect_id LIKE CONCAT('%',#{expect_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="client_name != null">
+			    AND client_name LIKE CONCAT('%',#{client_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND expect_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS receivingList     
+
+  	</select>	
+  	
+  	<!-- 입고예정코드를 보내서 수정위한 상세정보 받아옴 -->
+  	<select id="modify" resultType="pyr.mycompany.domain.ReceivingExpectDTO">
+  		SELECT r.raw_name, v.*, c.client_name
+  		FROM receiving_expect AS v
+		INNER JOIN raw AS r ON v.raw_id = r.raw_id
+		INNER JOIN `client` AS c ON v.client_id = c.client_id 
+  		WHERE expect_id=#{expect_id}     
+  	</select>
+  	
+  	<!-- 입고수정하면 디비 업데이트 -->
+  	<update id="update">
+  		UPDATE receiving_expect
+  		SET expect_quantity=#{expect_quantity},
+  			storage_name=#{storage_name},
+  			storageArea_name=#{storageArea_name}
+  		WHERE expect_id=#{expect_id}
+  	</update>
+  	
+  	<!-- 입고 지시된 항목 철회 상태 다시 0으로 바꿈 -->
+     <update id="receiving_back">
+        UPDATE receiving_expect
+        SET expect_state=0
+        WHERE expect_id=#{expect_id} 
+     </update>
+  	
+  	<!-- 입고확정된것은 상태를 2로 업데이트 -->
+  	<update id="confirm">
+  		UPDATE receiving_expect
+  		SET expect_state=2
+  		WHERE expect_id=#{expect_id} 
+  	</update>
+  	
+  	<!-- 입고목록에 업로드 -->
+  	<insert id="r_upload">
+  		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+	        SELECT IFNULL(MAX(bno),0) + 1 FROM receiving_list
+	    </selectKey>
+		INSERT INTO receiving_list(receiving_id,
+									receiving_date,
+									raw_id,
+									client_id,
+									receiving_quantity,
+									storage_name,
+									storageArea_name,
+									barcode,
+									bno)
+		VALUES((CONCAT("V",RIGHT(CONCAT("000000",#{bno}),5))),
+				#{receiving_date},
+				#{raw_id},
+				#{client_id},
+				#{receiving_quantity},
+				#{storage_name},
+				#{storageArea_name},
+				(CONCAT(replace(#{receiving_date},'-',''),RIGHT(CONCAT("000000",#{bno}),4))),
+				#{bno})
+  	</insert>
+  	
+  	<!-- 재고 등록 시, 1. 기존 창고 구역에 동일 물품 재고 있는지 체크
+  		2. 중복 o -> update, 중복 x -> insert -->
+  	<!-- 1. 재고 중복 체크 -->
+	<select id="invDupCheck" resultType="int">
+		SELECT count(*) FROM inventory_list
+		WHERE raw_id=#{raw_id}
+		AND storage_name=#{storage_name}
+		AND storageArea_name=#{storageArea_name}
+	</select>
+	  		
+  	<!-- 2-1. 중복 없다면 재고 업로드 -->
+  	<insert id="invUpload">
+  		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+	        SELECT IFNULL(MAX(bno),0) + 1 FROM inventory_list
+	    </selectKey>
+		INSERT INTO inventory_list(inventory_id,
+									raw_id,
+									inventory_quantity,
+									real_quantity,
+									storage_name,
+									storageArea_name,
+									bno)
+		VALUES((CONCAT("I",RIGHT(CONCAT("000000",#{bno}),5))),
+				#{raw_id},
+				#{inventory_quantity},
+				#{inventory_quantity},
+				#{storage_name},
+				#{storageArea_name},
+				#{bno})
+  	</insert>
+  	
+  	<!-- 2-2. 중복 있다면 재고 업데이트 -->
+	<update id="invUpdate">
+		UPDATE inventory_list
+		SET inventory_quantity=inventory_quantity+#{inventory_quantity}, real_quantity=real_quantity+#{inventory_quantity}
+		WHERE raw_id=#{raw_id} AND storage_name=#{storage_name} AND storageArea_name=#{storageArea_name};
+	</update>
+	
+	<!-- 입고 확정과 동시에 재고 등록 & 재고 이력 데이터 insert -->
+  	<insert id="recHistoryInsert">
+		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+		    SELECT IFNULL(MAX(bno), 0)+1 FROM inventory_history
+		</selectKey>
+		INSERT INTO inventory_history(history_id, history_category, history_detail, raw_id, diff_quantity, r_inventory_id, history_admin, bno)
+		VALUES(CONCAT("H",RIGHT(CONCAT("000000",#{bno}),5)), #{history_category}, #{history_detail}, #{raw_id}, #{diff_quantity}, #{r_inventory_id}, #{history_admin}, #{bno})
+	</insert>
+	
+	<!-- 재고 등록 시, 새로 insert되는 재고id 등록 -->
+	<update id="recNewIdUpdate">
+		UPDATE inventory_history SET r_inventory_id =
+			(SELECT inventory_id FROM inventory_list WHERE bno = (SELECT MAX(bno) FROM inventory_list))
+		WHERE bno = (SELECT MAX(bno) FROM inventory_history)
+	</update>
+	
+	<!-- 재고 등록 시, 중복되는 재고id 등록 -->
+	<update id="recDupIdUpdate">
+		UPDATE inventory_history SET r_inventory_id =
+			(SELECT inventory_id FROM inventory_list
+				WHERE raw_id = #{raw_id}
+				AND storage_name = #{storage_name}
+				AND storageArea_name = #{storageArea_name})
+		WHERE bno = (SELECT MAX(bno) FROM inventory_history)
+	</update>
+	
+	
+	
+		
+  		
+  	<!-- 입고대기리스트에서 선택한 정보 삭제 -->
+  	<delete id="delete">
+  		DELETE FROM receiving_expect WHERE expect_id=#{expect_id}
+  	</delete>
+
+  	<!-- 입고확정목록리스트 뿌리고 검색기능 넣기 -->
+    <select id="confirm_list" resultType="pyr.mycompany.domain.ReceivingDTO">
+		SELECT *
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, rc.* 
+				FROM (SELECT r.raw_name, v.*, c.client_name FROM receiving_list AS v
+					INNER JOIN raw AS r
+					ON v.raw_id = r.raw_id
+					INNER JOIN `client` AS c
+					ON v.client_id = c.client_id) as rc
+				WHERE 1=1
+			    <if test="receiving_id != null">
+			    AND receiving_id LIKE CONCAT('%',#{receiving_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="barcode != null">
+			    AND barcode LIKE CONCAT('%',#{barcode},'%')
+			    </if>
+			    <if test="client_name != null">
+			    AND client_name LIKE CONCAT('%',#{client_name},'%')
+			    </if>
+			   	<if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND receiving_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>     
+		) AS receivingList            
+	  <![CDATA[
+	  	 WHERE rownum>(#{pageNum}-1)*#{amount} 
+	  	 AND rownum<=#{pageNum}*#{amount}
+	  ]]>
+	</select>
+
+	<!--입고확정 페이징에 쓰일 전체건수  -->
+  	<!--int타입이고 하나의 값이기때문에 int만적으면 컨트롤러로간다  -->
+  	<select id="confirmTotalCount" resultType="int">
+  		SELECT COUNT(*)
+  		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, rc.* 
+				FROM (SELECT r.raw_name, v.*, c.client_name
+					FROM receiving_list AS v
+					INNER JOIN raw AS r
+					ON v.raw_id = r.raw_id
+					INNER JOIN `client` AS c
+					ON v.client_id = c.client_id) AS rc
+				WHERE 1=1
+			    <if test="receiving_id != null">
+			    AND receiving_id LIKE CONCAT('%',#{receiving_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="barcode != null">
+			    AND barcode LIKE CONCAT('%',#{barcode},'%')
+			    </if>
+			    <if test="client_name != null">
+			    AND client_name LIKE CONCAT('%',#{client_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND receiving_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS receivingList     
+  	</select>	
+</mapper>

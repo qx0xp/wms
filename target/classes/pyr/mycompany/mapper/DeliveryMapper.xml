@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="pyr.mycompany.mapper.DeliveryMapper">	
+	<select id="inventory_item_list" resultType="pyr.mycompany.domain.InventoryDTO">
+		select * 
+		from (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) as rownum, ri.* 
+				from (SELECT r.raw_name, i.* FROM raw AS r
+						INNER JOIN inventory_list AS i ON r.raw_id = i.raw_id) as ri 
+				where 1=1 AND inventory_quantity != 0
+				<if test="raw_id != null">
+			    and raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="keyword != null">
+			    and raw_name LIKE CONCAT('%',#{keyword},'%')
+	    		</if> 
+		) as inventory_itemList
+	  <!--CDATA : <(꺽세)가 크고작음을 의미하는것을 알려줌 -->
+	  <![CDATA[
+	  	 where rownum>(#{pageNum}-1)*#{amount} 
+	  	 and rownum<=#{pageNum}*#{amount}
+	  ]]>       
+	</select>
+	
+	<!--품목검색 페이징에 쓰일 전체건수  -->
+  	<!--int타입이고 하나의 값이기때문에 int만적으면 컨트롤러로간다  -->
+  	<select id="deliveryTotalCount" resultType="int">
+  		select count(*)
+  		from (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) as rownum, ri.* 
+				from (SELECT r.raw_name, i.* FROM raw AS r
+						INNER JOIN inventory_list AS i ON r.raw_id = i.raw_id) as ri 
+				where 1=1 AND inventory_quantity != 0
+				<if test="raw_id != null">
+			    and raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="keyword != null">
+			    and raw_name LIKE CONCAT('%',#{keyword},'%')
+	   			</if> 
+		) as inventory_itemList
+  	</select>	
+  	
+  	<!-- 출고등록  -->
+  	<insert id="d_regist">
+	    <selectKey keyProperty="bno" resultType="int" order="BEFORE">
+	        SELECT IFNULL(MAX(bno),0) + 1 FROM delivery_expect
+	    </selectKey>
+		INSERT INTO delivery_expect(d_expect_id,
+									d_expect_date,
+									raw_id,
+									d_expect_quantity,
+									storage_name,
+									storageArea_name,
+									shipment_bno,
+									inventory_id,
+									bno)
+		VALUES((CONCAT ("DE",RIGHT(CONCAT("000000",#{bno}),5))),
+				#{d_expect_date},
+				#{raw_id},
+				#{d_expect_quantity},
+				#{storage_name},
+				#{storageArea_name},
+				#{shipment_bno},
+				#{inventory_id},
+				#{bno})
+	</insert>
+	
+	<!-- 출고예정목록리스트 뿌리고 검색기능 넣기 -->
+    <select id="d_expect_list" resultType="pyr.mycompany.domain.DeliveryExpectDTO">
+	    SELECT *
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, drs.* 
+				FROM (SELECT r.raw_name, d.*, s.shipment_name, i.inventory_quantity
+						FROM delivery_expect AS d
+						INNER JOIN raw AS r ON d.raw_id = r.raw_id
+						INNER JOIN shipment AS s ON d.shipment_bno = s.shipment_bno
+						INNER JOIN inventory_list AS i ON d.inventory_id = i.inventory_id) AS drs	
+				WHERE d_expect_state = 0
+				<if test="d_expect_id != null">
+			    AND d_expect_id LIKE CONCAT('%',#{d_expect_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="shipment_name != null">
+			    AND shipment_name LIKE CONCAT('%',#{shipment_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND d_expect_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS delivery_expect  
+		<![CDATA[
+			WHERE rownum>(#{pageNum}-1)*#{amount} 
+			AND rownum<=#{pageNum}*#{amount}
+		]]>
+	</select>
+	
+	<!--출고예정 페이징에 쓰일 전체건수  -->
+  	<!--int타입이고 하나의 값이기때문에 int만적으면 컨트롤러로간다  -->
+  	<select id="d_expectTotalCount" resultType="int">
+		SELECT count(*)
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, drs.* 
+				FROM (SELECT r.raw_name, d.*, s.shipment_name, i.inventory_quantity
+						FROM delivery_expect AS d
+						INNER JOIN raw AS r ON d.raw_id = r.raw_id
+						INNER JOIN shipment AS s ON d.shipment_bno = s.shipment_bno
+						INNER JOIN inventory_list AS i ON d.inventory_id = i.inventory_id) AS drs				
+				WHERE d_expect_state = 0
+				<if test="d_expect_id != null">
+			    AND d_expect_id LIKE CONCAT('%',#{d_expect_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="shipment_name != null">
+			    AND shipment_name LIKE CONCAT('%',#{shipment_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND d_expect_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS delivery_expect  
+  	</select>	
+  	
+  	<!-- 출고예정코드를 보내서 수정위한 상세정보 받아옴 -->
+  	<select id="d_expect_modify" resultType="pyr.mycompany.domain.DeliveryExpectDTO">
+  		SELECT r.raw_name, d.*, s.shipment_name, i.inventory_quantity
+		FROM delivery_expect AS d
+		INNER JOIN raw AS r ON d.raw_id = r.raw_id
+		INNER JOIN shipment AS s ON d.shipment_bno = s.shipment_bno
+		INNER JOIN inventory_list AS i ON d.inventory_id = i.inventory_id
+  		WHERE d_expect_id=#{d_expect_id}     
+  	</select>
+  	
+  	<!-- 출고예정수정하면 디비 업데이트 -->
+  	<update id="d_expect_update">
+  		UPDATE delivery_expect
+  		SET d_expect_date=#{d_expect_date},
+  			d_expect_quantity=#{d_expect_quantity},
+  			shipment_bno=#{shipment_bno}
+  		WHERE d_expect_id=#{d_expect_id}
+  	</update>
+  	
+  	<!-- 출고지시된것은 상태를 1로 업데이트 -->
+  	<update id="d_expect_instruct">
+  		UPDATE delivery_expect SET d_expect_state=1 WHERE d_expect_id=#{d_expect_id} 
+  	</update>
+  	
+  	<!-- 츨고예정리스트에서 선택한 정보 삭제 -->
+  	<delete id="d_expect_delete">
+  		DELETE FROM delivery_expect WHERE d_expect_id=#{d_expect_id}
+  	</delete>
+  	
+  	<!-- 출고대기목록리스트 뿌리고 검색기능 넣기 -->
+    <select id="d_status_list" resultType="pyr.mycompany.domain.DeliveryExpectDTO">
+    SELECT *
+	FROM(SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, drs.* 
+			FROM (SELECT r.raw_name, d.*, s.shipment_name, i.inventory_quantity
+					FROM delivery_expect AS d
+					INNER JOIN raw AS r ON d.raw_id = r.raw_id
+					INNER JOIN shipment AS s ON d.shipment_bno = s.shipment_bno
+					INNER JOIN inventory_list AS i ON d.inventory_id = i.inventory_id) AS drs				
+			WHERE d_expect_state = 1
+			<if test="d_expect_id != null">
+		    AND d_expect_id LIKE CONCAT('%',#{d_expect_id},'%')
+		    </if>
+		    <if test="raw_id != null">
+		    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+		    </if>
+		    <if test="raw_name != null">
+		    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+		    </if>
+		    <if test="shipment_name != null">
+		    AND shipment_name LIKE CONCAT('%',#{shipment_name},'%')
+		    </if>
+		    <if test="start_date !=null and end_date != null">
+			    <choose>
+			    	<when test="start_date == '' or end_date == ''">
+			    	 AND 1=1
+			    	</when>
+			    	<otherwise>
+			    	AND d_expect_date BETWEEN #{start_date} AND #{end_date}
+			    	</otherwise>
+			    </choose>
+		    </if>
+	) AS delivery_expect
+	<![CDATA[
+		WHERE rownum>(#{pageNum}-1)*#{amount} 
+		AND rownum<=#{pageNum}*#{amount}
+	]]>
+	</select>
+	
+	<!--출고대기 페이징에 쓰일 전체건수  -->
+  	<!--int타입이고 하나의 값이기때문에 int만적으면 컨트롤러로간다  -->
+  	<select id="statusTotalCount" resultType="int">
+		SELECT count(*)
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, drs.* 
+				FROM (SELECT r.raw_name, d.*, s.shipment_name, i.inventory_quantity
+						FROM delivery_expect AS d
+						INNER JOIN raw AS r ON d.raw_id = r.raw_id
+						INNER JOIN shipment AS s ON d.shipment_bno = s.shipment_bno
+						INNER JOIN inventory_list AS i ON d.inventory_id = i.inventory_id) AS drs				
+				WHERE d_expect_state = 1
+				<if test="d_expect_id != null">
+			    AND d_expect_id LIKE CONCAT('%',#{d_expect_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			   	<if test="shipment_name != null">
+			    AND shipment_name LIKE CONCAT('%',#{shipment_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND d_expect_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS delivery_expect  
+  	</select>	
+  	
+  	<!-- 출고대기페이지의 출고예정코드를 보내서 수정위한 상세정보 받아옴 -->
+  	<select id="d_modify" resultType="pyr.mycompany.domain.DeliveryExpectDTO">
+  		SELECT r.raw_name, d.*, s.shipment_name, i.inventory_quantity
+		FROM delivery_expect AS d
+		INNER JOIN raw AS r ON d.raw_id = r.raw_id
+		INNER JOIN shipment AS s ON d.shipment_bno = s.shipment_bno
+		INNER JOIN inventory_list AS i ON d.inventory_id = i.inventory_id
+  		WHERE d_expect_id=#{d_expect_id}    
+  	</select>
+  	
+  	<!-- 출고수정하면 디비 업데이트 -->
+  	<update id="d_update">
+  		UPDATE delivery_expect SET d_expect_quantity=#{d_expect_quantity} WHERE d_expect_id=#{d_expect_id}
+  	</update>
+  	
+  	<!-- 출고 지시된 항목 철회 상태 다시 0으로 바꿈 -->
+    <update id="delivery_back">
+       UPDATE delivery_expect
+       SET d_expect_state=0
+       WHERE d_expect_id=#{d_expect_id} 
+    </update>
+  	
+  	<!-- 출고확정된것은 상태를 2로 업데이트 -->
+  	<update id="d_confirm">
+  		UPDATE delivery_expect SET d_expect_state=2 WHERE d_expect_id=#{d_expect_id} 
+  	</update>
+  	
+  	<!-- 출고목록에 업로드 -->
+  	<insert id="d_upload">
+  		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+	        SELECT IFNULL(MAX(bno),0) + 1 FROM delivery_list
+	    </selectKey>
+		INSERT INTO delivery_list(delivery_id,
+									delivery_date,
+									raw_id,
+									delivery_quantity,
+									storage_name,
+									storageArea_name,
+									shipment_bno,
+									inventory_id,
+									bno)
+		VALUES((CONCAT("D",RIGHT(CONCAT("000000",#{bno}),5))),
+				#{delivery_date},
+				#{raw_id},
+				#{delivery_quantity},
+				#{storage_name},
+				#{storageArea_name},
+				#{shipment_bno},
+				#{inventory_id},
+				#{bno})
+  	</insert>
+  	
+  	<!-- 재고수량 업데이트 -->
+  	<update id="i_update">
+  		UPDATE inventory_list SET inventory_quantity=#{inventory_quantity} WHERE inventory_id=#{inventory_id}
+  	</update>
+	
+	<!-- 출고 확정과 동시에 real_quantity 수량 빼기 -->
+	<update id="real_update">
+		UPDATE inventory_list SET real_quantity=real_quantity-#{delivery_quantity}
+		WHERE inventory_id = #{inventory_id}
+	</update>
+	
+	<!-- 출고 확정과 동시에 reql_quantity와 inventory_quantity 수량이 0이면 재고 삭제 -->
+	<delete id="invRealDelete">
+		DELETE FROM inventory_list
+		WHERE inventory_id=#{inventory_id} AND real_quantity=0 AND inventory_quantity=0
+	</delete>
+	
+	
+	<!-- 출고 확정과 동시에 재고 이력에 insert -->
+	<insert id="delHistoryInsert">
+		<selectKey keyProperty="bno" resultType="int" order="BEFORE">
+		    SELECT IFNULL(MAX(bno), 0)+1 FROM inventory_history
+		</selectKey>
+		INSERT INTO inventory_history(history_id, history_category, history_detail, raw_id, diff_quantity, d_inventory_id, history_admin, bno)
+		VALUES(CONCAT("H",RIGHT(CONCAT("000000",#{bno}),5)), #{history_category}, #{history_detail}, #{raw_id}, #{diff_quantity}, #{d_inventory_id}, #{history_admin}, #{bno})
+	</insert>
+	
+	<!-- 출고 시, 총 재고 등록하면 재고 delete -->
+	<delete id="delDelete">
+		DELETE FROM inventory_list WHERE inventory_quantity = 0;
+	</delete>
+	
+	<!-- 출고확정목록리스트 뿌리고 검색기능 넣기 -->
+    <select id="d_confirm_list" resultType="pyr.mycompany.domain.DeliveryDTO">
+    	SELECT *
+		FROM(SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, drs.* 
+				FROM (SELECT r.raw_name, d.*, s.shipment_name
+						FROM delivery_list AS d
+						INNER JOIN raw AS r ON d.raw_id = r.raw_id
+						INNER JOIN shipment AS s ON d.shipment_bno = s.shipment_bno) AS drs				
+				WHERE 1=1
+				<if test="delivery_id != null">
+			    AND delivery_id LIKE CONCAT('%',#{delivery_id},'%')
+			    </if>
+			    <if test="raw_id != null">
+			    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+			    </if>
+			    <if test="raw_name != null">
+			    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+			    </if>
+			    <if test="shipment_name != null">
+			    AND shipment_name LIKE CONCAT('%',#{shipment_name},'%')
+			    </if>
+			    <if test="start_date !=null and end_date != null">
+				    <choose>
+				    	<when test="start_date == '' or end_date == ''">
+				    	 AND 1=1
+				    	</when>
+				    	<otherwise>
+				    	AND delivery_date BETWEEN #{start_date} AND #{end_date}
+				    	</otherwise>
+				    </choose>
+			    </if>
+		) AS delivery_lists 
+	  <![CDATA[
+	  	 WHERE rownum>(#{pageNum}-1)*#{amount} 
+	  	 AND rownum<=#{pageNum}*#{amount}
+	  ]]>
+	</select>
+	
+	<!--출고확정 페이징에 쓰일 전체건수  -->
+  	<!--int타입이고 하나의 값이기때문에 int만적으면 컨트롤러로간다  -->
+  	<select id="dConfirmTotalCount" resultType="int">
+		SELECT COUNT(*)
+		FROM (SELECT ROW_NUMBER() OVER(ORDER BY bno DESC) AS rownum, drs.* 
+			FROM (SELECT r.raw_name, d.*, s.shipment_name
+						FROM delivery_list AS d
+						INNER JOIN raw AS r ON d.raw_id = r.raw_id
+						INNER JOIN shipment AS s ON d.shipment_bno = s.shipment_bno) AS drs				
+			WHERE 1=1
+			<if test="delivery_id != null">
+		    AND delivery_id LIKE CONCAT('%',#{delivery_id},'%')
+		    </if>
+		    <if test="raw_id != null">
+		    AND raw_id LIKE CONCAT('%',#{raw_id},'%')
+		    </if>
+		    <if test="raw_name != null">
+		    AND raw_name LIKE CONCAT('%',#{raw_name},'%')
+		    </if>
+	    	<if test="shipment_name != null">
+		    AND shipment_name LIKE CONCAT('%',#{shipment_name},'%')
+		    </if>
+		    <if test="start_date !=null and end_date != null">
+			    <choose>
+			    	<when test="start_date == '' or end_date == ''">
+			    	 AND 1=1
+			    	</when>
+			    	<otherwise>
+			    	AND delivery_date BETWEEN #{start_date} AND #{end_date}
+			    	</otherwise>
+			    </choose>
+		    </if>
+		) AS delivery_lists
+  	</select>
+</mapper>

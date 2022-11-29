@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="pyr.mycompany.mapper.PopupMapper">
+	<resultMap type="pyr.mycompany.domain.ReceivingDTO" id="ReceivingDTO">
+	    <result column="receiving_id" property="receiving_id"/>
+	    <result column="receiving_date" property="receiving_date"/>
+	    <result column="receiving_quantity" property="receiving_quantity"/>
+	    <result column="barcode" property="barcode"/>
+	    <result column="raw_id" property="raw_id"/>
+	    <result column="storage_num" property="storage_num"/>
+	    <collection property="rawDTO" resultMap="RawDTO"/>
+	    <collection property="storageDTO" resultMap="StorageDTO"/>
+	</resultMap>
+	 
+	<resultMap type="pyr.mycompany.domain.InventoryDTO" id="InventoryDTO">
+	    <result column="inventory_id" property="inventory_id"/>
+	    <result column="inventory_quantity" property="inventory_quantity"/>
+	    <result column="receiving_id" property="receiving_id"/>
+	    <result column="raw_id" property="raw_id"/>
+	    <result column="storage_num" property="storage_num"/>
+	    <collection property="receivingDTO" resultMap="ReceivingDTO"/>
+	    <collection property="rawDTO" resultMap="RawDTO"/>
+	</resultMap>
+	
+	<resultMap type="pyr.mycompany.domain.RawDTO" id="RawDTO">
+	    <result column="raw_id" property="raw_id"/>
+	    <result column="raw_name" property="raw_name"/>
+	    <result column="raw_standard" property="raw_standard"/>
+	    <result column="raw_price" property="raw_price"/>
+	    <result column="client_id" property="client_id"/>
+	    <collection property="clientDTO" resultMap="ClientDTO"/>
+	</resultMap>
+	
+	<resultMap type="pyr.mycompany.domain.StorageDTO" id="StorageDTO">
+	    <result column="storage_name" property="storage_name"/>
+	    <result column="storageArea_name" property="storageArea_name"/>
+	</resultMap>
+	
+	<resultMap type="pyr.mycompany.domain.ClientDTO" id="ClientDTO">
+	    <result column="client_id" property="client_id"/>
+	    <result column="client_name" property="client_name"/>
+	    <result column="client_tel" property="client_tel"/>
+	    <result column="client_manager" property="client_manager"/>
+	</resultMap>
+	
+	<select id="list" resultMap="InventoryDTO">
+		SELECT *
+		FROM (SELECT @rownum:=@rownum+1 AS rownum, inv.*
+				FROM (SELECT @rownum:=0) AS tmp,
+				(SELECT  il.*, r.raw_name, c.client_name FROM inventory_list il
+				JOIN raw r ON il.raw_id = r.raw_id
+				JOIN `client` c ON r.client_id = c.client_id
+				) AS inv
+		)AS inv_list
+	</select>
+</mapper>
